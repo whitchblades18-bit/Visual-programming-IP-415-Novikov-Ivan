@@ -1,0 +1,23 @@
+image: node:20
+
+stages:
+  - check-format
+  - lint
+  - test
+
+check-format:
+  stage: check-format
+  script:
+    - npx prettier --check "src/**/*.{ts,tsx}"
+
+lint:
+  stage: lint
+  script:
+    - npm ci
+    - npm run lint
+
+test:
+  stage: test
+  script:
+    - npm ci
+    - npm run test:run
