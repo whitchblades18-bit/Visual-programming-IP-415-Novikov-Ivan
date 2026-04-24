@@ -10,6 +10,6 @@
     "strict": true,
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "new_file.ts"],
+  "include": ["src/**/*", "new_file.ts", "task5.ts"],
   "exclude": ["node_modules"]
 }
