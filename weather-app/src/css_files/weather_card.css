@@ -1,0 +1,69 @@
+.weather-card {
+  background: rgba(139, 178, 188, 0.95);
+  border-radius: 20px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease;
+}
+
+.weather-card:hover {
+  transform: translateY(-5px);
+}
+
+.weather-date {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 15px;
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.weather-icon {
+  width: 80px;
+  height: 80px;
+}
+
+.weather-temp {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.weather-description {
+  color: #ffffff;
+  margin-bottom: 15px;
+  text-transform: capitalize;
+}
+
+.weather-details {
+  display: flex;
+  justify-content: space-around;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.detail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  color: #ffffff;
+}
+
+.thunderstorm { background: rgba(67, 67, 67, 0.95); color: white; }
+.thunderstorm .weather-temp,
+.thunderstorm .weather-date,
+.thunderstorm .detail { color: #ffd700; }
+
+.rain { background: rgba(44, 62, 80, 0.95); color: white; }
+.snow { background: rgba(181, 207, 255, 0.95); }
+.clear { background: rgba(88, 194, 223, 0.95); color: white; }
+.clouds { background: rgba(172, 174, 175, 0.95); }
