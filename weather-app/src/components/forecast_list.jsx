@@ -5,7 +5,6 @@ import '../css_files/forecast_list.css';
 const ForecastList = ({ forecasts }) => {
   if (!forecasts || forecasts.length === 0) return null;
 
-  // Группируем по дням и берем первый прогноз для каждого дня
   const getDailyForecasts = () => {
     const dailyMap = new Map();
     

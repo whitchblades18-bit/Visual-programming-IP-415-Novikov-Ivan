@@ -87,7 +87,7 @@ function App() {
         )}
 
         <footer className="footer">
-          <p>Данные предоставлены OpenWeather API | Обновление каждые 3 часа</p>
+          <p> </p>
         </footer>
       </div>
     </div>

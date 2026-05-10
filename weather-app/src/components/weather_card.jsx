@@ -47,19 +47,19 @@ const WeatherCard = ({ weather, isToday = false }) => {
       <div className="weather-details">
         <div className="detail">
           <svg viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 13c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z"/>
+            {/* <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 13c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z"/> */}
           </svg>
           <span>Ощущается {Math.round(weather.main.feels_like)}°</span>
         </div>
         <div className="detail">
           <svg viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M6 2h12v20H6V2zm2 2v16h8V4H8z"/>
+            {/* <path fill="currentColor" d="M6 2h12v20H6V2zm2 2v16h8V4H8z"/> */}
           </svg>
           <span>Влажность {weather.main.humidity}%</span>
         </div>
         <div className="detail">
           <svg viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 13c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z"/>
+            {/* <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 13c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z"/> */}
           </svg>
           <span>Ветер {weather.wind.speed} м/с</span>
         </div>

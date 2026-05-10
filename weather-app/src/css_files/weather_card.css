@@ -7,10 +7,6 @@
   transition: transform 0.3s ease;
 }
 
-.weather-card:hover {
-  transform: translateY(-5px);
-}
-
 .weather-date {
   font-size: 1.1rem;
   font-weight: bold;
@@ -63,7 +59,7 @@
 .thunderstorm .weather-date,
 .thunderstorm .detail { color: #ffd700; }
 
-.rain { background: rgba(44, 62, 80, 0.95); color: white; }
-.snow { background: rgba(181, 207, 255, 0.95); }
-.clear { background: rgba(88, 194, 223, 0.95); color: white; }
-.clouds { background: rgba(172, 174, 175, 0.95); }
+.rain { background: rgba(111, 113, 182, 0.95); color: white; }
+.snow { background: rgba(205, 222, 255, 0.95); }
+.clear { background: rgba(37, 157, 191, 0.95); color: white; }
+.clouds { background: rgba(214, 215, 216, 0.95); }
