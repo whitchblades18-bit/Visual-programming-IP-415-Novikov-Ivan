@@ -1,0 +1,212 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.spreadsheet {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: white;
+}
+
+/* Панель формул */
+.formula-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.formula-label {
+  display: flex;
+  align-items: center;
+  background: #e9ecef;
+  padding: 4px 10px;
+  border-radius: 3px;
+}
+
+.fx {
+  font-weight: bold;
+  font-size: 16px;
+  font-family: monospace;
+  color: #2c3e50;
+}
+
+.formula-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  outline: none;
+  background: white;
+}
+
+.formula-input:focus {
+  border-color: #4a90e2;
+  outline: none;
+}
+
+.grid-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.grid {
+  min-width: max-content;
+}
+
+.corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 50px;
+  height: 30px;
+  background: #f8f9fa;
+  border-right: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  z-index: 10;
+}
+
+.headers-row {
+  position: sticky;
+  top: 0;
+  display: flex;
+  background: #f8f9fa;
+  margin-left: 50px;
+  z-index: 5;
+}
+
+.col-header {
+  border-right: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  background: #f8f9fa;
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 30px;
+  position: relative;
+  user-select: none;
+}
+
+.resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.resize-handle:hover {
+  background: #4a90e2;
+}
+
+.row {
+  display: flex;
+}
+
+.row-header {
+  position: sticky;
+  left: 0;
+  width: 50px;
+  background: #f8f9fa;
+  border-right: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 30px;
+  user-select: none;
+  z-index: 2;
+}
+
+.cell {
+  border-right: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+  overflow: hidden;
+  position: relative;
+  background: white;
+}
+
+.cell.selected {
+  background: rgba(74, 145, 226, 0.182);
+  border: 2px solid #4a90e2;
+}
+
+.cell.in-range {
+  background: rgba(74, 145, 226, 0.182);
+}
+
+.cell-content {
+  padding: 4px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.cell input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 4px 8px;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  outline: none;
+  background: white;
+}
+
+.context-menu {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 1000;
+  min-width: 180px;
+}
+
+.menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.menu-item:hover {
+  background: #f0f0f0;
+}
+
+.context-menu hr {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid #e0e0e0;
+}
+
+.grid-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.grid-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.grid-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 6px;
+}
+
+.grid-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
