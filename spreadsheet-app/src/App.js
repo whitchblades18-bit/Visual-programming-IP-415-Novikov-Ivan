@@ -14,6 +14,7 @@ function App() {
   const [editValue, setEditValue] = useState('');
   const [scrollTop, setScrollTop] = useState(0);
   const [columnWidths, setColumnWidths] = useState({});
+  const [rowHeights, setRowHeights] = useState({});
   const [formulaValue, setFormulaValue] = useState('');
   
   const containerRef = useRef(null);
@@ -34,7 +35,6 @@ function App() {
   const evaluateFormula = (formula, currentData) => {
     const expression = formula.substring(1);
     
-    // Функция SUM
     const sumMatch = expression.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/i);
     if (sumMatch) {
       const startCol = sumMatch[1].charCodeAt(0) - 65;
@@ -53,7 +53,6 @@ function App() {
       return sum;
     }
     
-    // Функция AVERAGE
     const avgMatch = expression.match(/AVERAGE\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/i);
     if (avgMatch) {
       const startCol = avgMatch[1].charCodeAt(0) - 65;
@@ -76,7 +75,6 @@ function App() {
       return count > 0 ? sum / count : 0;
     }
     
-    // Простые арифметические операции
     let evalExpr = expression;
     const cellRefs = expression.match(/[A-Z]+\d+/g);
     if (cellRefs) {
@@ -114,7 +112,6 @@ function App() {
     
     setData(newData);
     
-    // Пересчет всех формул
     const updatedData = { ...newData };
     Object.keys(updatedData).forEach(key => {
       const cell = updatedData[key];
@@ -144,7 +141,6 @@ function App() {
     }
   };
 
-  // Добавление строки ВЫШЕ текущей
   const addRowAbove = (currentRow) => {
     const newData = {};
     
@@ -280,12 +276,34 @@ function App() {
 
   const startResize = (colIndex, e) => {
     e.preventDefault();
+    e.stopPropagation();
     const startX = e.clientX;
     const startWidth = columnWidths[colIndex] || 100;
     
     const handleMouseMove = (moveEvent) => {
       const newWidth = startWidth + (moveEvent.clientX - startX);
       setColumnWidths(prev => ({ ...prev, [colIndex]: Math.max(50, newWidth) }));
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const startRowResize = (rowIndex, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startHeight = rowHeights[rowIndex] || ROW_HEIGHT;
+    
+    const handleMouseMove = (moveEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const newHeight = Math.max(25, startHeight + deltaY);
+      setRowHeights(prev => ({ ...prev, [rowIndex]: newHeight }));
     };
     
     const handleMouseUp = () => {
@@ -320,13 +338,11 @@ function App() {
 
   const handleCellClick = (row, col, e) => {
     if (e.shiftKey && selectedCell) {
-      // Выделение диапазона с Shift
       setSelectionRange({
         start: selectedCell,
         end: { row, col }
       });
     } else {
-      // Обычное выделение ячейки
       setSelectedCell({ row, col });
       setSelectionRange(null);
       const rawValue = getCellRaw(row, col);
@@ -380,7 +396,6 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editingCell, selectedCell]);
 
-  // Обновление панели формул при изменении выбранной ячейки
   useEffect(() => {
     if (selectedCell && !editingCell) {
       const rawValue = getCellRaw(selectedCell.row, selectedCell.col);
@@ -397,7 +412,6 @@ function App() {
 
   return (
     <div className="spreadsheet">
-      {/* Панель формул */}
       <div className="formula-bar">
         <div className="formula-label">
           <span className="fx">fx</span>
@@ -449,7 +463,7 @@ function App() {
               >
                 {getColumnLabel(i)}
                 <div 
-                  className="resize-handle"
+                  className="col-resize"
                   onMouseDown={(e) => startResize(i, e)}
                 />
               </div>
@@ -458,40 +472,55 @@ function App() {
           
           <div style={{ height: `${DEFAULT_ROWS * ROW_HEIGHT}px`, position: 'relative' }}>
             <div style={{ position: 'absolute', top: startIndex * ROW_HEIGHT, width: '100%' }}>
-              {visibleRows.map(row => (
-                <div key={row} className="row" style={{ height: ROW_HEIGHT }}>
-                  <div className="row-header">{row + 1}</div>
-                  {Array.from({ length: DEFAULT_COLS }).map((_, col) => {
-                    const isSelected = selectedCell?.row === row && selectedCell?.col === col;
-                    const isInRange = isCellInRange(row, col);
-                    const isEditing = editingCell?.row === row && editingCell?.col === col;
-                    const value = getCellValue(row, col);
-                    
-                    return (
-                      <div
-                        key={col}
-                        className={`cell ${isSelected ? 'selected' : ''} ${isInRange && !isSelected ? 'in-range' : ''}`}
-                        style={{ width: columnWidths[col] || 100 }}
-                        onClick={(e) => handleCellClick(row, col, e)}
-                        onDoubleClick={() => startEdit(row, col)}
-                        onContextMenu={(e) => handleContextMenu(e, row, col)}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={finishEdit}
-                            autoFocus
-                          />
-                        ) : (
-                          <div className="cell-content">{formatDisplay(value)}</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+              {visibleRows.map(row => {
+                const currentRowHeight = rowHeights[row] || ROW_HEIGHT;
+                return (
+                  <div key={row} className="row" style={{ height: currentRowHeight }}>
+                    <div 
+                      className="row-header"
+                      style={{ height: currentRowHeight }}
+                    >
+                      {row + 1}
+                      <div 
+                        className="row-resize"
+                        onMouseDown={(e) => startRowResize(row, e)}
+                      />
+                    </div>
+                    {Array.from({ length: DEFAULT_COLS }).map((_, col) => {
+                      const isSelected = selectedCell?.row === row && selectedCell?.col === col;
+                      const isInRange = isCellInRange(row, col);
+                      const isEditing = editingCell?.row === row && editingCell?.col === col;
+                      const value = getCellValue(row, col);
+                      
+                      return (
+                        <div
+                          key={col}
+                          className={`cell ${isSelected ? 'selected' : ''} ${isInRange && !isSelected ? 'in-range' : ''}`}
+                          style={{ 
+                            width: columnWidths[col] || 100,
+                            height: currentRowHeight
+                          }}
+                          onClick={(e) => handleCellClick(row, col, e)}
+                          onDoubleClick={() => startEdit(row, col)}
+                          onContextMenu={(e) => handleContextMenu(e, row, col)}
+                        >
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onBlur={finishEdit}
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="cell-content">{formatDisplay(value)}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

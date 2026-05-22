@@ -12,7 +12,6 @@
   background: white;
 }
 
-/* Панель формул */
 .formula-bar {
   display: flex;
   align-items: center;
@@ -95,9 +94,11 @@
   line-height: 30px;
   position: relative;
   user-select: none;
+  flex-shrink: 0;
 }
 
-.resize-handle {
+/* Хватайка для столбца - справа */
+.col-resize {
   position: absolute;
   right: -3px;
   top: 0;
@@ -105,14 +106,16 @@
   height: 100%;
   cursor: col-resize;
   background: transparent;
+  z-index: 10;
 }
 
-.resize-handle:hover {
+.col-resize:hover {
   background: #4a90e2;
 }
 
 .row {
   display: flex;
+  min-height: 30px;
 }
 
 .row-header {
@@ -125,9 +128,29 @@
   text-align: center;
   font-weight: 600;
   font-size: 12px;
-  line-height: 30px;
   user-select: none;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Хватайка для строки - снизу */
+.row-resize {
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.row-resize:hover {
+  background: #4a90e2;
 }
 
 .cell {
@@ -136,15 +159,16 @@
   overflow: hidden;
   position: relative;
   background: white;
+  flex-shrink: 0;
 }
 
 .cell.selected {
-  background: rgba(74, 145, 226, 0.182);
+  background: rgba(74, 144, 226, 0.15);
   border: 2px solid #4a90e2;
 }
 
 .cell.in-range {
-  background: rgba(74, 145, 226, 0.182);
+  background: rgba(74, 144, 226, 0.05);
 }
 
 .cell-content {
@@ -153,7 +177,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 13px;
-  line-height: 22px;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .cell input {
