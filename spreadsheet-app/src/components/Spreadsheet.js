@@ -1,26 +1,45 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  updateCell,
+  setSelectedCell,
+  setSelectionRange,
+  setColumnWidth,
+  setRowHeight,
+  undo,
+  redo,
+  setData,
+  clearHistory
+} from '../store/slices/spreadsheetSlice';
+import { updateCurrentDocData } from '../store/slices/documentsSlice';
+import { setSaveStatus, setShowExportMenu } from '../store/slices/uiSlice';
 
 const ROW_HEIGHT = 30;
 const VISIBLE_ROWS = 30;
 
-function Spreadsheet({ document: doc, onSave, onBack }) {
-  const [data, setData] = useState(doc.data || {});
-  const [selectedCell, setSelectedCell] = useState(null);
-  const [selectionRange, setSelectionRange] = useState(null);
+function Spreadsheet({ onBack }) {
+const dispatch = useDispatch();
+  const { data, selectedCell, selectionRange, columnWidths, rowHeights } = useSelector((state) => state.spreadsheet);
+  const { currentDoc: doc } = useSelector((state) => state.documents);
+  const { saveStatus, showExportMenu } = useSelector((state) => state.ui);
+  
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [scrollTop, setScrollTop] = useState(0);
-  const [columnWidths, setColumnWidths] = useState({});
-  const [rowHeights, setRowHeights] = useState({});
   const [formulaValue, setFormulaValue] = useState('');
-  const [saveStatus, setSaveStatus] = useState('saved');
-  const [showExportMenu, setShowExportMenu] = useState(false);
   
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  const ROWS = doc.rows || 100;
-  const COLS = doc.cols || 26;
+  const ROWS = doc?.rows || 100;
+  const COLS = doc?.cols || 26;
+
+  useEffect(() => {
+    if (doc?.data) {
+      dispatch(setData(doc.data));
+      dispatch(clearHistory());
+    }
+  }, [doc?.id]);
 
   const getCellValue = (row, col) => {
     const cell = data[`${row},${col}`];
@@ -89,41 +108,40 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
     }
   };
 
-  const triggerAutoSave = useCallback((newData) => {
-    setSaveStatus('saving');
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      onSave(doc.id, newData);
-      setSaveStatus('saved');
-    }, 500);
-  }, [doc.id, onSave]);
-
-  const updateCell = (row, col, rawValue) => {
-    let computedValue = rawValue;
-    if (typeof rawValue === 'string' && rawValue.startsWith('=')) {
-      try {
-        computedValue = evaluateFormula(rawValue, data);
-      } catch (e) {
-        computedValue = '#ОШИБКА!';
-      }
+  const handleUpdateCell = (row, col, rawValue) => {
+ let computedValue = rawValue;
+  if (typeof rawValue === 'string' && rawValue.startsWith('=')) {
+    try {
+      computedValue = evaluateFormula(rawValue, data);
+    } catch (e) {
+      computedValue = '#ОШИБКА!';
     }
-    
-    const newData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
-    
-    const updatedData = { ...newData };
-    Object.keys(updatedData).forEach(key => {
-      const cell = updatedData[key];
-      if (cell.raw && cell.raw.startsWith('=')) {
-        try {
-          cell.computed = evaluateFormula(cell.raw, updatedData);
-        } catch (e) {
-          cell.computed = '#ОШИБКА!';
+  }
+  
+  dispatch(updateCell({ row, col, value: rawValue, computedValue }));
+
+  const updatedData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
+  Object.keys(updatedData).forEach(key => {
+    const cell = updatedData[key];
+    if (cell.raw && cell.raw.startsWith('=')) {
+      try {
+        const newComputed = evaluateFormula(cell.raw, updatedData);
+        if (newComputed !== cell.computed) {
+          const [r, c] = key.split(',').map(Number);
+          dispatch(updateCell({ row: r, col: c, value: cell.raw, computedValue: newComputed }));
         }
-      }
-    });
-    
-    setData(updatedData);
-    triggerAutoSave(updatedData);
+      } catch (e) {}
+    }
+  });
+  
+  dispatch(setSaveStatus('saving'));
+  if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+  saveTimeoutRef.current = setTimeout(() => {
+    const state = window.store?.getState();
+    const currentData = state?.spreadsheet?.data || updatedData;
+    dispatch(updateCurrentDocData(currentData));
+    dispatch(setSaveStatus('saved'));
+  }, 500);
   };
 
   const startEdit = (row, col) => {
@@ -134,7 +152,7 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
 
   const finishEdit = () => {
     if (editingCell) {
-      updateCell(editingCell.row, editingCell.col, editValue);
+      handleUpdateCell(editingCell.row, editingCell.col, editValue);
       setEditingCell(null);
     }
   };
@@ -146,11 +164,8 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
       if (row < currentRow) newData[key] = data[key];
       else newData[`${row + 1},${col}`] = data[key];
     });
-    setData(newData);
-    triggerAutoSave(newData);
-    if (selectedCell && selectedCell.row >= currentRow) {
-      setSelectedCell({ row: selectedCell.row + 1, col: selectedCell.col });
-    }
+    dispatch(setData(newData));
+    dispatch(updateCurrentDocData(newData));
   };
 
   const deleteRow = (row) => {
@@ -160,10 +175,10 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
       if (r < row) newData[key] = data[key];
       else if (r > row) newData[`${r - 1},${col}`] = data[key];
     });
-    setData(newData);
-    triggerAutoSave(newData);
-    if (selectedCell?.row === row) setSelectedCell(null);
-    else if (selectedCell?.row > row) setSelectedCell({ row: selectedCell.row - 1, col: selectedCell.col });
+    dispatch(setData(newData));
+    dispatch(updateCurrentDocData(newData));
+    if (selectedCell?.row === row) dispatch(setSelectedCell(null));
+    else if (selectedCell?.row > row) dispatch(setSelectedCell({ row: selectedCell.row - 1, col: selectedCell.col }));
   };
 
   const addColumnLeft = (currentCol) => {
@@ -173,10 +188,10 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
       if (col < currentCol) newData[key] = data[key];
       else newData[`${row},${col + 1}`] = data[key];
     });
-    setData(newData);
-    triggerAutoSave(newData);
+    dispatch(setData(newData));
+    dispatch(updateCurrentDocData(newData));
     if (selectedCell && selectedCell.col >= currentCol) {
-      setSelectedCell({ row: selectedCell.row, col: selectedCell.col + 1 });
+      dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col + 1 }));
     }
   };
 
@@ -187,10 +202,10 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
       if (c < col) newData[key] = data[key];
       else if (c > col) newData[`${row},${c - 1}`] = data[key];
     });
-    setData(newData);
-    triggerAutoSave(newData);
-    if (selectedCell?.col === col) setSelectedCell(null);
-    else if (selectedCell?.col > col) setSelectedCell({ row: selectedCell.row, col: selectedCell.col - 1 });
+    dispatch(setData(newData));
+    dispatch(updateCurrentDocData(newData));
+    if (selectedCell?.col === col) dispatch(setSelectedCell(null));
+    else if (selectedCell?.col > col) dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col - 1 }));
   };
 
   const exportToCSV = () => {
@@ -209,17 +224,17 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${doc.name}.csv`;
+    link.download = `${doc?.name || 'table'}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
 
   const exportToJSON = () => {
-    const exportData = { name: doc.name, rows: ROWS, cols: COLS, data: data };
+    const exportData = { name: doc?.name, rows: ROWS, cols: COLS, data: data };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${doc.name}.json`;
+    link.download = `${doc?.name || 'table'}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -241,8 +256,8 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
           newData[`${i},${j}`] = { raw: val, computed: val };
         }
       }
-      setData(newData);
-      triggerAutoSave(newData);
+      dispatch(setData(newData));
+      dispatch(updateCurrentDocData(newData));
     };
     reader.readAsText(file, 'UTF-8');
     event.target.value = '';
@@ -282,7 +297,7 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
     const startWidth = columnWidths[colIndex] || 100;
     const handleMouseMove = (moveEvent) => {
       const newWidth = startWidth + (moveEvent.clientX - startX);
-      setColumnWidths(prev => ({ ...prev, [colIndex]: Math.max(50, newWidth) }));
+      dispatch(setColumnWidth({ col: colIndex, width: Math.max(50, newWidth) }));
     };
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -298,7 +313,7 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
     const startHeight = rowHeights[rowIndex] || ROW_HEIGHT;
     const handleMouseMove = (moveEvent) => {
       const newHeight = startHeight + (moveEvent.clientY - startY);
-      setRowHeights(prev => ({ ...prev, [rowIndex]: Math.max(25, newHeight) }));
+      dispatch(setRowHeight({ row: rowIndex, height: Math.max(25, newHeight) }));
     };
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -322,55 +337,65 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
 
   const handleCellClick = (row, col, e) => {
     if (e.shiftKey && selectedCell) {
-      setSelectionRange({ start: selectedCell, end: { row, col } });
+      dispatch(setSelectionRange({ start: selectedCell, end: { row, col } }));
     } else {
-      setSelectedCell({ row, col });
-      setSelectionRange(null);
+      dispatch(setSelectedCell({ row, col }));
+      dispatch(setSelectionRange(null));
       setFormulaValue(getCellRaw(row, col));
     }
   };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        onSave(doc.id, data);
-        setSaveStatus('saved');
-      } else if (editingCell) {
-        if (e.key === 'Enter') finishEdit();
-        else if (e.key === 'Escape') setEditingCell(null);
-      } else if (selectedCell) {
-        const { row, col } = selectedCell;
-        if (e.key === 'Enter') startEdit(row, col);
-        else if (e.key === 'Delete') updateCell(row, col, '');
-        else if (e.key === 'ArrowUp' && row > 0) setSelectedCell({ row: row - 1, col });
-        else if (e.key === 'ArrowDown' && row < ROWS - 1) setSelectedCell({ row: row + 1, col });
-        else if (e.key === 'ArrowLeft' && col > 0) setSelectedCell({ row, col: col - 1 });
-        else if (e.key === 'ArrowRight' && col < COLS - 1) setSelectedCell({ row, col: col + 1 });
-      }
-    };
-    
-    const handleBeforeUnload = (e) => {
-      if (saveStatus === 'saving') {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          e.preventDefault();
+          dispatch(undo());
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+          e.preventDefault();
+          dispatch(redo());
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault();
+          dispatch(setSaveStatus('saving'));
+          dispatch(updateCurrentDocData(data));
+          setTimeout(() => dispatch(setSaveStatus('saved')), 300);
+        } else if (editingCell) {
+          if (e.key === 'Enter') finishEdit();
+          else if (e.key === 'Escape') setEditingCell(null);
+        } else if (selectedCell) {
+          const { row, col } = selectedCell;
+          if (e.key === 'Enter') startEdit(row, col);
+          else if (e.key === 'Delete') handleUpdateCell(row, col, '');
+          else if (e.key === 'ArrowUp' && row > 0) dispatch(setSelectedCell({ row: row - 1, col }));
+          else if (e.key === 'ArrowDown' && row < ROWS - 1) dispatch(setSelectedCell({ row: row + 1, col }));
+          else if (e.key === 'ArrowLeft' && col > 0) dispatch(setSelectedCell({ row, col: col - 1 }));
+          else if (e.key === 'ArrowRight' && col < COLS - 1) dispatch(setSelectedCell({ row, col: col + 1 }));
+        }
+      };
+      
+      const handleBeforeUnload = (e) => {
+        if (doc && data && Object.keys(data).length > 0) {
+          dispatch(updateCurrentDocData(data));
+        }
         e.preventDefault();
         e.returnValue = '';
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [editingCell, selectedCell, saveStatus, doc.id, data, onSave]);
+        return '';
+      };
+      
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+  }, [editingCell, selectedCell, saveStatus, data]);
 
   useEffect(() => {
-    if (selectedCell && !editingCell) {
-      setFormulaValue(getCellRaw(selectedCell.row, selectedCell.col));
-    }
+    return () => {
+      if (doc && data && Object.keys(data).length > 0) {
+        dispatch(updateCurrentDocData(data));
+      }
+    };
   }, [selectedCell, data]);
 
   const startIndex = Math.floor(scrollTop / ROW_HEIGHT);
@@ -385,8 +410,8 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
         <input type="text" className="formula-input" value={formulaValue} onChange={(e) => {
           setFormulaValue(e.target.value);
           if (selectedCell && !editingCell) setEditValue(e.target.value);
-        }} onKeyDown={(e) => { if (e.key === 'Enter' && selectedCell) updateCell(selectedCell.row, selectedCell.col, formulaValue); }} 
-        onBlur={() => { if (selectedCell && !editingCell) updateCell(selectedCell.row, selectedCell.col, formulaValue); }}
+        }} onKeyDown={(e) => { if (e.key === 'Enter' && selectedCell) handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue); }} 
+        onBlur={() => { if (selectedCell && !editingCell) handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue); }}
         placeholder="Введите значение или формулу..." />
         
         <div className="toolbar-buttons">
@@ -394,7 +419,7 @@ function Spreadsheet({ document: doc, onSave, onBack }) {
             {saveStatus === 'saved' && '✓ Сохранено'}
             {saveStatus === 'saving' && '⟳ Сохранение...'}
           </span>
-          <button className="toolbar-btn" onClick={() => setShowExportMenu(!showExportMenu)}>Экспорт</button>
+          <button className="toolbar-btn" onClick={() => dispatch(setShowExportMenu(!showExportMenu))}>Экспорт</button>
           <button className="back-btn" onClick={onBack}>← Назад</button>
         </div>
         
