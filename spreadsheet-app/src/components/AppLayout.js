@@ -1,9 +1,21 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { mockAuthAPI } from '../services/mockAuthService';
+import { showNotification } from '../store/slices/uiSlice';
+import { clearCurrentDoc } from '../store/slices/documentsSlice';
 import './AppLayout.css';
 
 function AppLayout() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  const handleLogout = async () => {
+    await mockAuthAPI.logout();
+    dispatch(clearCurrentDoc());
+    dispatch(showNotification({ message: 'Вы вышли из системы', type: 'success' }));
+    navigate('/login');
+  };
 
   return (
     <div className="app-layout">
@@ -12,7 +24,9 @@ function AppLayout() {
           Spreadsheet App
         </div>
         <div className="user-info">
-          <span>Mock User</span>
+          <button onClick={handleLogout} className="logout-btn">
+            Выйти
+          </button>
         </div>
       </header>
       

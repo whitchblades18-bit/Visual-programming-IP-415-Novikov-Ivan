@@ -12,7 +12,7 @@ import {
   setData,
   clearHistory
 } from '../store/slices/spreadsheetSlice';
-import { updateCurrentDocData, setCurrentDoc } from '../store/slices/documentsSlice';
+import { saveDocumentData, setCurrentDoc } from '../store/slices/documentsSlice';
 import { setSaveStatus, setShowExportMenu, showNotification } from '../store/slices/uiSlice';
 import Breadcrumbs from './Breadcrumbs';
 
@@ -65,7 +65,7 @@ function Spreadsheet() {
   }, [doc, dispatch, isInitialized]);
 
   const saveDocument = useCallback((dataToSave) => {
-    if (!autoSaveEnabledRef.current) return;
+    if (!autoSaveEnabledRef.current || !doc) return;
     
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -75,7 +75,7 @@ function Spreadsheet() {
     
     saveTimeoutRef.current = setTimeout(() => {
       if (doc && dataToSave) {
-        dispatch(updateCurrentDocData(dataToSave));
+        dispatch(saveDocumentData({ id: doc.id, data: dataToSave }));
         dispatch(setSaveStatus('saved'));
       }
     }, 500);
@@ -85,7 +85,7 @@ function Spreadsheet() {
     const handleBeforeUnload = (e) => {
       if (doc && isInitialized) {
         const currentData = window.store?.getState()?.spreadsheet?.data || data;
-        dispatch(updateCurrentDocData(currentData));
+        dispatch(saveDocumentData({ id: doc.id, data: currentData }));
       }
     };
     
@@ -99,7 +99,7 @@ function Spreadsheet() {
   const safeNavigate = useCallback((path) => {
     if (doc && isInitialized) {
       const currentData = window.store?.getState()?.spreadsheet?.data || data;
-      dispatch(updateCurrentDocData(currentData));
+      dispatch(saveDocumentData({ id: doc.id, data: currentData }));
     }
     navigate(path);
   }, [navigate, doc, data, dispatch, isInitialized]);
@@ -183,26 +183,26 @@ function Spreadsheet() {
     
     dispatch(updateCell({ row, col, value: rawValue, computedValue }));
     
+    const newData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
+    
     setTimeout(() => {
       const state = window.store?.getState();
-      const currentData = state?.spreadsheet?.data;
-      if (currentData) {
-        Object.keys(currentData).forEach(key => {
-          const cell = currentData[key];
-          if (cell.raw && typeof cell.raw === 'string' && cell.raw.startsWith('=')) {
-            try {
-              const newComputed = evaluateFormula(cell.raw, currentData);
-              if (newComputed !== cell.computed) {
-                const [r, c] = key.split(',').map(Number);
-                dispatch(updateCell({ row: r, col: c, value: cell.raw, computedValue: newComputed }));
-              }
-            } catch (e) {}
-          }
-        });
-      }
+      const currentData = state?.spreadsheet?.data || newData;
+      
+      Object.keys(currentData).forEach(key => {
+        const cell = currentData[key];
+        if (cell.raw && typeof cell.raw === 'string' && cell.raw.startsWith('=')) {
+          try {
+            const newComputed = evaluateFormula(cell.raw, currentData);
+            if (newComputed !== cell.computed) {
+              const [r, c] = key.split(',').map(Number);
+              dispatch(updateCell({ row: r, col: c, value: cell.raw, computedValue: newComputed }));
+            }
+          } catch (e) {}
+        }
+      });
     }, 0);
     
-    const newData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
     saveDocument(newData);
   }, [dispatch, data, evaluateFormula, saveDocument]);
 
@@ -445,7 +445,7 @@ function Spreadsheet() {
         e.preventDefault();
         const state = window.store?.getState();
         if (state && doc) {
-          dispatch(updateCurrentDocData(state.spreadsheet.data));
+          dispatch(saveDocumentData({ id: doc.id, data: state.spreadsheet.data }));
           dispatch(setSaveStatus('saved'));
           dispatch(showNotification({ message: 'Документ сохранён', type: 'success' }));
         }
