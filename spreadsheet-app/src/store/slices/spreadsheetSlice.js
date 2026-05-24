@@ -23,7 +23,6 @@ const spreadsheetSlice = createSlice({
       const { row, col, value, computedValue } = action.payload;
       const key = `${row},${col}`;
       
-      // Сохраняем в историю перед изменением
       state.history.past.push(JSON.parse(JSON.stringify(state.data)));
       state.history.future = [];
       

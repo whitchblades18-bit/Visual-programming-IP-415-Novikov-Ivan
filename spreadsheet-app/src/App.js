@@ -1,23 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import Spreadsheet from './components/Spreadsheet';
+import { loadDocuments } from './store/slices/documentsSlice';
+import AppLayout from './components/AppLayout';
 import DocumentDashboard from './components/DocumentDashboard';
-import { loadDocuments, setCurrentDoc } from './store/slices/documentsSlice';
+import Spreadsheet from './components/Spreadsheet';
+import ProfilePage from './components/ProfilePage';
+import NotFoundPage from './components/NotFoundPage';
+import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
-
-const STORAGE_KEY = 'spreadsheet_docs';
 
 function App() {
   const dispatch = useDispatch();
-  const { list: documents, currentDoc, loading } = useSelector((state) => state.documents);
+  const { loading } = useSelector((state) => state.documents);
 
   useEffect(() => {
     dispatch(loadDocuments());
   }, [dispatch]);
 
   if (loading) return <div className="loading">Загрузка...</div>;
-  if (currentDoc) return <Spreadsheet onBack={() => dispatch(setCurrentDoc(null))} />;
-  return <DocumentDashboard onOpen={(doc) => dispatch(setCurrentDoc(doc))} />;
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<DocumentDashboard />} />
+        </Route>
+        
+        <Route path="/documents/:documentId" element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Spreadsheet />} />
+        </Route>
+        
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<ProfilePage />} />
+        </Route>
+        
+        <Route path="/404" element={<NotFoundPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 export default App;

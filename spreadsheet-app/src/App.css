@@ -328,3 +328,40 @@
 .back-btn:hover {
   background: #5a6268;
 }
+
+.export-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 100;
+  min-width: 150px;
+}
+
+.export-menu button,
+.export-menu label {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.export-menu button:hover,
+.export-menu label:hover {
+  background: #f0f0f0;
+}
+
+.import-label {
+  cursor: pointer;
+}
+
+.formula-bar {
+  position: relative;
+}

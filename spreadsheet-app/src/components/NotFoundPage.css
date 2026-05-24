@@ -1,0 +1,46 @@
+.not-found {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  padding: 2rem;
+}
+
+.not-found-content {
+  text-align: center;
+  background: white;
+  padding: 3rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.not-found h1 {
+  font-size: 6rem;
+  margin: 0;
+  color: #e74c3c;
+}
+
+.not-found h2 {
+  font-size: 2rem;
+  margin: 1rem 0;
+  color: #2c3e50;
+}
+
+.not-found p {
+  color: #7f8c8d;
+  margin-bottom: 2rem;
+}
+
+.home-link {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #3498db;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.home-link:hover {
+  background: #2980b9;
+}

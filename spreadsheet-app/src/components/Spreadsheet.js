@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   updateCell,
   setSelectedCell,
@@ -11,35 +12,97 @@ import {
   setData,
   clearHistory
 } from '../store/slices/spreadsheetSlice';
-import { updateCurrentDocData } from '../store/slices/documentsSlice';
-import { setSaveStatus, setShowExportMenu } from '../store/slices/uiSlice';
+import { updateCurrentDocData, setCurrentDoc } from '../store/slices/documentsSlice';
+import { setSaveStatus, setShowExportMenu, showNotification } from '../store/slices/uiSlice';
+import Breadcrumbs from './Breadcrumbs';
 
 const ROW_HEIGHT = 30;
 const VISIBLE_ROWS = 30;
 
-function Spreadsheet({ onBack }) {
-const dispatch = useDispatch();
+function Spreadsheet() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { documentId } = useParams();
   const { data, selectedCell, selectionRange, columnWidths, rowHeights } = useSelector((state) => state.spreadsheet);
-  const { currentDoc: doc } = useSelector((state) => state.documents);
+  const { currentDoc: doc, list: documents, loading } = useSelector((state) => state.documents);
   const { saveStatus, showExportMenu } = useSelector((state) => state.ui);
   
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [scrollTop, setScrollTop] = useState(0);
   const [formulaValue, setFormulaValue] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
   
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const autoSaveEnabledRef = useRef(true);
 
   const ROWS = doc?.rows || 100;
   const COLS = doc?.cols || 26;
 
   useEffect(() => {
-    if (doc?.data) {
-      dispatch(setData(doc.data));
-      dispatch(clearHistory());
+    if (documentId && documents.length > 0 && !loading) {
+      const document = documents.find(d => d.id === documentId);
+      if (document) {
+        if (!doc || doc.id !== documentId) {
+          dispatch(setCurrentDoc(document));
+          setIsInitialized(false);
+        }
+      } else {
+        dispatch(showNotification({ message: 'Документ не найден', type: 'error' }));
+        navigate('/404', { replace: true });
+      }
     }
-  }, [doc?.id]);
+  }, [documentId, documents, loading, dispatch, navigate, doc]);
+
+  useEffect(() => {
+    if (doc && doc.data && !isInitialized) {
+      const docData = doc.data || {};
+      dispatch(setData(docData));
+      dispatch(clearHistory());
+      setIsInitialized(true);
+    }
+  }, [doc, dispatch, isInitialized]);
+
+  const saveDocument = useCallback((dataToSave) => {
+    if (!autoSaveEnabledRef.current) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    dispatch(setSaveStatus('saving'));
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      if (doc && dataToSave) {
+        dispatch(updateCurrentDocData(dataToSave));
+        dispatch(setSaveStatus('saved'));
+      }
+    }, 500);
+  }, [doc, dispatch]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (doc && isInitialized) {
+        const currentData = window.store?.getState()?.spreadsheet?.data || data;
+        dispatch(updateCurrentDocData(currentData));
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [doc, data, dispatch, isInitialized]);
+
+  const safeNavigate = useCallback((path) => {
+    if (doc && isInitialized) {
+      const currentData = window.store?.getState()?.spreadsheet?.data || data;
+      dispatch(updateCurrentDocData(currentData));
+    }
+    navigate(path);
+  }, [navigate, doc, data, dispatch, isInitialized]);
 
   const getCellValue = (row, col) => {
     const cell = data[`${row},${col}`];
@@ -52,7 +115,7 @@ const dispatch = useDispatch();
     return cell ? cell.raw : '';
   };
 
-  const evaluateFormula = (formula, currentData) => {
+  const evaluateFormula = useCallback((formula, currentData) => {
     const expression = formula.substring(1);
     
     const sumMatch = expression.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/i);
@@ -106,43 +169,42 @@ const dispatch = useDispatch();
     } catch (e) {
       return '#ОШИБКА!';
     }
-  };
+  }, [getCellValue]);
 
-  const handleUpdateCell = (row, col, rawValue) => {
- let computedValue = rawValue;
-  if (typeof rawValue === 'string' && rawValue.startsWith('=')) {
-    try {
-      computedValue = evaluateFormula(rawValue, data);
-    } catch (e) {
-      computedValue = '#ОШИБКА!';
-    }
-  }
-  
-  dispatch(updateCell({ row, col, value: rawValue, computedValue }));
-
-  const updatedData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
-  Object.keys(updatedData).forEach(key => {
-    const cell = updatedData[key];
-    if (cell.raw && cell.raw.startsWith('=')) {
+  const handleUpdateCell = useCallback((row, col, rawValue) => {
+    let computedValue = rawValue;
+    if (typeof rawValue === 'string' && rawValue.startsWith('=')) {
       try {
-        const newComputed = evaluateFormula(cell.raw, updatedData);
-        if (newComputed !== cell.computed) {
-          const [r, c] = key.split(',').map(Number);
-          dispatch(updateCell({ row: r, col: c, value: cell.raw, computedValue: newComputed }));
-        }
-      } catch (e) {}
+        computedValue = evaluateFormula(rawValue, data);
+      } catch (e) {
+        computedValue = '#ОШИБКА!';
+      }
     }
-  });
-  
-  dispatch(setSaveStatus('saving'));
-  if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-  saveTimeoutRef.current = setTimeout(() => {
-    const state = window.store?.getState();
-    const currentData = state?.spreadsheet?.data || updatedData;
-    dispatch(updateCurrentDocData(currentData));
-    dispatch(setSaveStatus('saved'));
-  }, 500);
-  };
+    
+    dispatch(updateCell({ row, col, value: rawValue, computedValue }));
+    
+    setTimeout(() => {
+      const state = window.store?.getState();
+      const currentData = state?.spreadsheet?.data;
+      if (currentData) {
+        Object.keys(currentData).forEach(key => {
+          const cell = currentData[key];
+          if (cell.raw && typeof cell.raw === 'string' && cell.raw.startsWith('=')) {
+            try {
+              const newComputed = evaluateFormula(cell.raw, currentData);
+              if (newComputed !== cell.computed) {
+                const [r, c] = key.split(',').map(Number);
+                dispatch(updateCell({ row: r, col: c, value: cell.raw, computedValue: newComputed }));
+              }
+            } catch (e) {}
+          }
+        });
+      }
+    }, 0);
+    
+    const newData = { ...data, [`${row},${col}`]: { raw: rawValue, computed: computedValue } };
+    saveDocument(newData);
+  }, [dispatch, data, evaluateFormula, saveDocument]);
 
   const startEdit = (row, col) => {
     setEditingCell({ row, col });
@@ -165,7 +227,8 @@ const dispatch = useDispatch();
       else newData[`${row + 1},${col}`] = data[key];
     });
     dispatch(setData(newData));
-    dispatch(updateCurrentDocData(newData));
+    saveDocument(newData);
+    dispatch(showNotification({ message: 'Строка добавлена', type: 'success' }));
   };
 
   const deleteRow = (row) => {
@@ -176,9 +239,10 @@ const dispatch = useDispatch();
       else if (r > row) newData[`${r - 1},${col}`] = data[key];
     });
     dispatch(setData(newData));
-    dispatch(updateCurrentDocData(newData));
+    saveDocument(newData);
     if (selectedCell?.row === row) dispatch(setSelectedCell(null));
     else if (selectedCell?.row > row) dispatch(setSelectedCell({ row: selectedCell.row - 1, col: selectedCell.col }));
+    dispatch(showNotification({ message: 'Строка удалена', type: 'success' }));
   };
 
   const addColumnLeft = (currentCol) => {
@@ -189,10 +253,11 @@ const dispatch = useDispatch();
       else newData[`${row},${col + 1}`] = data[key];
     });
     dispatch(setData(newData));
-    dispatch(updateCurrentDocData(newData));
+    saveDocument(newData);
     if (selectedCell && selectedCell.col >= currentCol) {
       dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col + 1 }));
     }
+    dispatch(showNotification({ message: 'Столбец добавлен', type: 'success' }));
   };
 
   const deleteColumn = (col) => {
@@ -203,9 +268,10 @@ const dispatch = useDispatch();
       else if (c > col) newData[`${row},${c - 1}`] = data[key];
     });
     dispatch(setData(newData));
-    dispatch(updateCurrentDocData(newData));
+    saveDocument(newData);
     if (selectedCell?.col === col) dispatch(setSelectedCell(null));
     else if (selectedCell?.col > col) dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col - 1 }));
+    dispatch(showNotification({ message: 'Столбец удалён', type: 'success' }));
   };
 
   const exportToCSV = () => {
@@ -227,6 +293,7 @@ const dispatch = useDispatch();
     link.download = `${doc?.name || 'table'}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+    dispatch(showNotification({ message: 'Экспорт CSV выполнен', type: 'success' }));
   };
 
   const exportToJSON = () => {
@@ -237,6 +304,7 @@ const dispatch = useDispatch();
     link.download = `${doc?.name || 'table'}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
+    dispatch(showNotification({ message: 'Экспорт JSON выполнен', type: 'success' }));
   };
 
   const importCSV = (event) => {
@@ -257,7 +325,8 @@ const dispatch = useDispatch();
         }
       }
       dispatch(setData(newData));
-      dispatch(updateCurrentDocData(newData));
+      saveDocument(newData);
+      dispatch(showNotification({ message: 'Импорт CSV выполнен', type: 'success' }));
     };
     reader.readAsText(file, 'UTF-8');
     event.target.value = '';
@@ -268,18 +337,18 @@ const dispatch = useDispatch();
     const menu = document.createElement('div');
     menu.className = 'context-menu';
     menu.innerHTML = `
-      <div class="menu-item" data-action="add-row">➕ Добавить строку выше</div>
-      <div class="menu-item" data-action="delete-row">❌ Удалить строку</div>
+      <div class="menu-item" data-action="add-row">Добавить строку выше</div>
+      <div class="menu-item" data-action="delete-row">Удалить строку</div>
       <hr/>
-      <div class="menu-item" data-action="add-col">➕ Добавить столбец левее</div>
-      <div class="menu-item" data-action="delete-col">❌ Удалить столбец</div>
+      <div class="menu-item" data-action="add-col">Добавить столбец левее</div>
+      <div class="menu-item" data-action="delete-col">Удалить столбец</div>
     `;
     menu.style.position = 'fixed';
     menu.style.left = `${e.clientX}px`;
     menu.style.top = `${e.clientY}px`;
     
-    const handleClick = (e) => {
-      const action = e.target.dataset.action;
+    const handleClick = (clickEvent) => {
+      const action = clickEvent.target.dataset.action;
       if (action === 'add-row') addRowAbove(row);
       if (action === 'delete-row') deleteRow(row);
       if (action === 'add-col') addColumnLeft(col);
@@ -288,7 +357,14 @@ const dispatch = useDispatch();
     };
     menu.addEventListener('click', handleClick);
     document.body.appendChild(menu);
-    setTimeout(() => document.addEventListener('click', () => menu.remove()), 0);
+    
+    const removeMenu = () => {
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+      document.removeEventListener('click', removeMenu);
+    };
+    setTimeout(() => document.addEventListener('click', removeMenu), 0);
   };
 
   const startResize = (colIndex, e) => {
@@ -347,72 +423,87 @@ const dispatch = useDispatch();
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-          e.preventDefault();
-          dispatch(undo());
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-          e.preventDefault();
-          dispatch(redo());
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-          e.preventDefault();
-          dispatch(setSaveStatus('saving'));
-          dispatch(updateCurrentDocData(data));
-          setTimeout(() => dispatch(setSaveStatus('saved')), 300);
-        } else if (editingCell) {
-          if (e.key === 'Enter') finishEdit();
-          else if (e.key === 'Escape') setEditingCell(null);
-        } else if (selectedCell) {
-          const { row, col } = selectedCell;
-          if (e.key === 'Enter') startEdit(row, col);
-          else if (e.key === 'Delete') handleUpdateCell(row, col, '');
-          else if (e.key === 'ArrowUp' && row > 0) dispatch(setSelectedCell({ row: row - 1, col }));
-          else if (e.key === 'ArrowDown' && row < ROWS - 1) dispatch(setSelectedCell({ row: row + 1, col }));
-          else if (e.key === 'ArrowLeft' && col > 0) dispatch(setSelectedCell({ row, col: col - 1 }));
-          else if (e.key === 'ArrowRight' && col < COLS - 1) dispatch(setSelectedCell({ row, col: col + 1 }));
-        }
-      };
-      
-      const handleBeforeUnload = (e) => {
-        if (doc && data && Object.keys(data).length > 0) {
-          dispatch(updateCurrentDocData(data));
-        }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
-        e.returnValue = '';
-        return '';
-      };
-      
-      window.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      
-      return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      };
-  }, [editingCell, selectedCell, saveStatus, data]);
-
-  useEffect(() => {
-    return () => {
-      if (doc && data && Object.keys(data).length > 0) {
-        dispatch(updateCurrentDocData(data));
+        dispatch(undo());
+        setTimeout(() => {
+          const state = window.store?.getState();
+          if (state && doc) {
+            saveDocument(state.spreadsheet.data);
+          }
+        }, 100);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        dispatch(redo());
+        setTimeout(() => {
+          const state = window.store?.getState();
+          if (state && doc) {
+            saveDocument(state.spreadsheet.data);
+          }
+        }, 100);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        const state = window.store?.getState();
+        if (state && doc) {
+          dispatch(updateCurrentDocData(state.spreadsheet.data));
+          dispatch(setSaveStatus('saved'));
+          dispatch(showNotification({ message: 'Документ сохранён', type: 'success' }));
+        }
+      } else if (editingCell) {
+        if (e.key === 'Enter') finishEdit();
+        else if (e.key === 'Escape') setEditingCell(null);
+      } else if (selectedCell) {
+        const { row, col } = selectedCell;
+        if (e.key === 'Enter') startEdit(row, col);
+        else if (e.key === 'Delete') handleUpdateCell(row, col, '');
+        else if (e.key === 'ArrowUp' && row > 0) dispatch(setSelectedCell({ row: row - 1, col }));
+        else if (e.key === 'ArrowDown' && row < ROWS - 1) dispatch(setSelectedCell({ row: row + 1, col }));
+        else if (e.key === 'ArrowLeft' && col > 0) dispatch(setSelectedCell({ row, col: col - 1 }));
+        else if (e.key === 'ArrowRight' && col < COLS - 1) dispatch(setSelectedCell({ row, col: col + 1 }));
       }
     };
-  }, [selectedCell, data]);
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editingCell, selectedCell, data, doc, dispatch, ROWS, COLS, handleUpdateCell, saveDocument]);
 
-  const startIndex = Math.floor(scrollTop / ROW_HEIGHT);
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT));
   const endIndex = Math.min(startIndex + VISIBLE_ROWS, ROWS);
   const visibleRows = [];
   for (let i = startIndex; i < endIndex; i++) visibleRows.push(i);
 
+  if (!doc || !isInitialized) {
+    return <div className="loading">Загрузка документа...</div>;
+  }
+
   return (
     <div className="spreadsheet">
+      <Breadcrumbs />
       <div className="formula-bar">
         <div className="formula-label"><span className="fx">fx</span></div>
-        <input type="text" className="formula-input" value={formulaValue} onChange={(e) => {
-          setFormulaValue(e.target.value);
-          if (selectedCell && !editingCell) setEditValue(e.target.value);
-        }} onKeyDown={(e) => { if (e.key === 'Enter' && selectedCell) handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue); }} 
-        onBlur={() => { if (selectedCell && !editingCell) handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue); }}
-        placeholder="Введите значение или формулу..." />
+        <input 
+          type="text" 
+          className="formula-input" 
+          value={formulaValue} 
+          onChange={(e) => {
+            setFormulaValue(e.target.value);
+            if (selectedCell && !editingCell) setEditValue(e.target.value);
+          }} 
+          onKeyDown={(e) => { 
+            if (e.key === 'Enter' && selectedCell) {
+              handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue);
+            }
+          }} 
+          onBlur={() => { 
+            if (selectedCell && !editingCell && formulaValue !== getCellRaw(selectedCell.row, selectedCell.col)) {
+              handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue);
+            }
+          }}
+          placeholder="Введите значение или формулу..." 
+        />
         
         <div className="toolbar-buttons">
           <span className={`save-indicator ${saveStatus}`}>
@@ -420,14 +511,17 @@ const dispatch = useDispatch();
             {saveStatus === 'saving' && '⟳ Сохранение...'}
           </span>
           <button className="toolbar-btn" onClick={() => dispatch(setShowExportMenu(!showExportMenu))}>Экспорт</button>
-          <button className="back-btn" onClick={onBack}>← Назад</button>
+          <button className="back-btn" onClick={() => safeNavigate('/dashboard')}>← Назад</button>
         </div>
         
         {showExportMenu && (
           <div className="export-menu">
             <button onClick={exportToCSV}>Экспорт CSV</button>
             <button onClick={exportToJSON}>Экспорт JSON</button>
-            <label>Импорт CSV<input type="file" accept=".csv" onChange={importCSV} style={{ display: 'none' }} /></label>
+            <label className="import-label">
+              Импорт CSV
+              <input type="file" accept=".csv" onChange={importCSV} style={{ display: 'none' }} />
+            </label>
           </div>
         )}
       </div>
@@ -455,13 +549,22 @@ const dispatch = useDispatch();
                       <div className="row-resize" onMouseDown={(e) => startRowResize(row, e)} />
                     </div>
                     {Array.from({ length: COLS }).map((_, col) => (
-                      <div key={col} className={`cell ${selectedCell?.row === row && selectedCell?.col === col ? 'selected' : ''} ${isCellInRange(row, col) && !(selectedCell?.row === row && selectedCell?.col === col) ? 'in-range' : ''}`}
+                      <div 
+                        key={col} 
+                        className={`cell ${selectedCell?.row === row && selectedCell?.col === col ? 'selected' : ''} ${isCellInRange(row, col) && !(selectedCell?.row === row && selectedCell?.col === col) ? 'in-range' : ''}`}
                         style={{ width: columnWidths[col] || 100, height: currentRowHeight }}
                         onClick={(e) => handleCellClick(row, col, e)}
                         onDoubleClick={() => startEdit(row, col)}
                         onContextMenu={(e) => handleContextMenu(e, row, col)}>
                         {editingCell?.row === row && editingCell?.col === col ? (
-                          <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={finishEdit} autoFocus />
+                          <input 
+                            type="text" 
+                            value={editValue} 
+                            onChange={(e) => setEditValue(e.target.value)} 
+                            onBlur={finishEdit}
+                            onKeyDown={(e) => e.key === 'Enter' && finishEdit()}
+                            autoFocus 
+                          />
                         ) : (
                           <div className="cell-content">{getCellValue(row, col)}</div>
                         )}

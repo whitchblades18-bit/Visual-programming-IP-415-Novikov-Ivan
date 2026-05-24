@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { createDocument, deleteDocument, renameDocument, duplicateDocument } from '../store/slices/documentsSlice';
-import { setShowCreateModal } from '../store/slices/uiSlice';
+import { useNavigate } from 'react-router-dom';
+import { createDocument, deleteDocument, renameDocument, duplicateDocument, setCurrentDoc } from '../store/slices/documentsSlice';
+import { setShowCreateModal, showNotification, resetNewDoc } from '../store/slices/uiSlice';
+import Breadcrumbs from './Breadcrumbs';
 
-function DocumentDashboard({ onOpen }) {
-const dispatch = useDispatch();
+function DocumentDashboard() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { list: documents } = useSelector((state) => state.documents);
-  const { showCreateModal } = useSelector((state) => state.ui);
-  const [newDocName, setNewDocName] = useState('Новая таблица');
+  const { showCreateModal, newDocName } = useSelector((state) => state.ui);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
+
+  const handleOpenDocument = (doc) => {
+    dispatch(setCurrentDoc(doc));
+    navigate(`/documents/${doc.id}`);
+  };
 
   const handleCreate = () => {
     if (newDocName.trim()) {
       dispatch(createDocument({ name: newDocName, rows: 100, cols: 26, documents }));
-      setNewDocName('Новая таблица');
+      dispatch(resetNewDoc());
       dispatch(setShowCreateModal(false));
+      dispatch(showNotification({ message: 'Документ создан', type: 'success' }));
     }
   };
 
@@ -27,8 +35,21 @@ const dispatch = useDispatch();
   const submitRename = (id) => {
     if (renameValue.trim()) {
       dispatch(renameDocument({ id, name: renameValue, documents }));
+      dispatch(showNotification({ message: 'Документ переименован', type: 'success' }));
     }
     setRenamingId(null);
+  };
+
+  const handleDelete = (doc) => {
+    if (window.confirm(`Удалить "${doc.name}"?`)) {
+      dispatch(deleteDocument({ id: doc.id, documents }));
+      dispatch(showNotification({ message: 'Документ удалён', type: 'success' }));
+    }
+  };
+
+  const handleDuplicate = (doc) => {
+    dispatch(duplicateDocument({ id: doc.id, documents }));
+    dispatch(showNotification({ message: 'Документ скопирован', type: 'success' }));
   };
 
   const formatDate = (dateStr) => {
@@ -39,6 +60,7 @@ const dispatch = useDispatch();
 
   return (
     <div style={{ padding: '20px', minHeight: '100vh', background: '#f5f5f5' }}>
+      <Breadcrumbs />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 style={{ margin: 0 }}>Мои таблицы</h1>
         <button onClick={() => dispatch(setShowCreateModal(true))} style={{
@@ -50,10 +72,6 @@ const dispatch = useDispatch();
       {documents.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '8px' }}>
           <p>У вас пока нет документов</p>
-          <button onClick={() => dispatch(setShowCreateModal(true))} style={{
-            background: '#4a90e2', color: 'white', border: 'none', padding: '10px 20px',
-            borderRadius: '6px', cursor: 'pointer', marginTop: '10px'
-          }}>Создать первую таблицу</button>
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '15px' }}>
@@ -75,14 +93,14 @@ const dispatch = useDispatch();
                     style={{ fontSize: '16px', fontWeight: 'bold', padding: '4px 8px', border: '1px solid #4a90e2', borderRadius: '4px' }}
                   />
                 ) : (
-                  <h3 style={{ margin: '0 0 5px 0', cursor: 'pointer' }} onClick={() => onOpen(doc)}>{doc.name}</h3>
+                  <h3 style={{ margin: '0 0 5px 0', cursor: 'pointer' }} onClick={() => handleOpenDocument(doc)}>{doc.name}</h3>
                 )}
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                  📅 {formatDate(doc.updatedAt)}
+                  {formatDate(doc.updatedAt)}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => onOpen(doc)} style={{
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={() => handleOpenDocument(doc)} style={{
                   background: '#4a90e2', color: 'white', border: 'none', padding: '6px 12px',
                   borderRadius: '4px', cursor: 'pointer'
                 }}>Открыть</button>
@@ -90,11 +108,11 @@ const dispatch = useDispatch();
                   background: '#4a90e2', color: 'white', border: 'none', padding: '6px 12px',
                   borderRadius: '4px', cursor: 'pointer'
                 }}>Переименовать</button>
-                <button onClick={() => dispatch(duplicateDocument({ id: doc.id, documents }))} style={{
+                <button onClick={() => handleDuplicate(doc)} style={{
                   background: '#4a90e2', color: 'white', border: 'none', padding: '6px 12px',
                   borderRadius: '4px', cursor: 'pointer'
                 }}>Копировать</button>
-                <button onClick={() => { if (window.confirm(`Удалить "${doc.name}"?`)) dispatch(deleteDocument({ id: doc.id, documents })); }} style={{
+                <button onClick={() => handleDelete(doc)} style={{
                   background: '#e74c3c', color: 'white', border: 'none', padding: '6px 12px',
                   borderRadius: '4px', cursor: 'pointer'
                 }}>Удалить</button>
@@ -112,13 +130,16 @@ const dispatch = useDispatch();
             <input
               type="text"
               value={newDocName}
-              onChange={(e) => setNewDocName(e.target.value)}
+              onChange={(e) => dispatch({ type: 'ui/setNewDocName', payload: e.target.value })}
               placeholder="Название"
               autoFocus
               style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '20px' }}
             />
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => dispatch(setShowCreateModal(false))} style={{ padding: '8px 16px', border: '1px solid #ddd', background: 'white', borderRadius: '6px', cursor: 'pointer' }}>Отмена</button>
+              <button onClick={() => {
+                dispatch(setShowCreateModal(false));
+                dispatch(resetNewDoc());
+              }} style={{ padding: '8px 16px', border: '1px solid #ddd', background: 'white', borderRadius: '6px', cursor: 'pointer' }}>Отмена</button>
               <button onClick={handleCreate} style={{ padding: '8px 16px', background: '#4a90e2', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Создать</button>
             </div>
           </div>
