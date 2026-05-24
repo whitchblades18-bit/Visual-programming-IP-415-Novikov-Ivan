@@ -3,6 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   updateCell,
+  updateCellStyle,
+  updateRangeStyles,
   setSelectedCell,
   setSelectionRange,
   setColumnWidth,
@@ -10,11 +12,16 @@ import {
   undo,
   redo,
   setData,
-  clearHistory
+  clearHistory,
+  copySelection,
+  cutSelection,
+  pasteSelection,
+  clearClipboard
 } from '../store/slices/spreadsheetSlice';
 import { saveDocumentData, setCurrentDoc } from '../store/slices/documentsSlice';
 import { setSaveStatus, setShowExportMenu, showNotification } from '../store/slices/uiSlice';
 import Breadcrumbs from './Breadcrumbs';
+import FormatToolbar from './FormatToolbar';
 
 const ROW_HEIGHT = 30;
 const VISIBLE_ROWS = 30;
@@ -23,7 +30,7 @@ function Spreadsheet() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const { data, selectedCell, selectionRange, columnWidths, rowHeights } = useSelector((state) => state.spreadsheet);
+  const { data, styles, selectedCell, selectionRange, columnWidths, rowHeights } = useSelector((state) => state.spreadsheet);
   const { currentDoc: doc, list: documents, loading } = useSelector((state) => state.documents);
   const { saveStatus, showExportMenu } = useSelector((state) => state.ui);
   
@@ -58,13 +65,14 @@ function Spreadsheet() {
   useEffect(() => {
     if (doc && doc.data && !isInitialized) {
       const docData = doc.data || {};
+      const docStyles = doc.styles || {};
       dispatch(setData(docData));
       dispatch(clearHistory());
       setIsInitialized(true);
     }
   }, [doc, dispatch, isInitialized]);
 
-  const saveDocument = useCallback((dataToSave) => {
+  const saveDocument = useCallback((dataToSave, stylesToSave) => {
     if (!autoSaveEnabledRef.current || !doc) return;
     
     if (saveTimeoutRef.current) {
@@ -75,7 +83,7 @@ function Spreadsheet() {
     
     saveTimeoutRef.current = setTimeout(() => {
       if (doc && dataToSave) {
-        dispatch(saveDocumentData({ id: doc.id, data: dataToSave }));
+        dispatch(saveDocumentData({ id: doc.id, data: dataToSave, styles: stylesToSave }));
         dispatch(setSaveStatus('saved'));
       }
     }, 500);
@@ -85,7 +93,8 @@ function Spreadsheet() {
     const handleBeforeUnload = (e) => {
       if (doc && isInitialized) {
         const currentData = window.store?.getState()?.spreadsheet?.data || data;
-        dispatch(saveDocumentData({ id: doc.id, data: currentData }));
+        const currentStyles = window.store?.getState()?.spreadsheet?.styles || styles;
+        dispatch(saveDocumentData({ id: doc.id, data: currentData, styles: currentStyles }));
       }
     };
     
@@ -94,20 +103,35 @@ function Spreadsheet() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [doc, data, dispatch, isInitialized]);
+  }, [doc, data, styles, dispatch, isInitialized]);
 
   const safeNavigate = useCallback((path) => {
     if (doc && isInitialized) {
       const currentData = window.store?.getState()?.spreadsheet?.data || data;
-      dispatch(saveDocumentData({ id: doc.id, data: currentData }));
+      const currentStyles = window.store?.getState()?.spreadsheet?.styles || styles;
+      dispatch(saveDocumentData({ id: doc.id, data: currentData, styles: currentStyles }));
     }
     navigate(path);
-  }, [navigate, doc, data, dispatch, isInitialized]);
+  }, [navigate, doc, data, styles, dispatch, isInitialized]);
 
   const getCellValue = (row, col) => {
     const cell = data[`${row},${col}`];
+    const style = styles[`${row},${col}`] || {};
     if (!cell) return '';
-    return cell.computed !== undefined ? cell.computed : cell.raw;
+    let value = cell.computed !== undefined ? cell.computed : cell.raw;
+    
+    if (style.format === 'percent') {
+      const num = parseFloat(value);
+      value = isNaN(num) ? value : `${Math.round(num * 100)}%`;
+    } else if (style.format === 'currency') {
+      const num = parseFloat(value);
+      value = isNaN(num) ? value : `${num.toFixed(2)} ₽`;
+    } else if (style.format === 'date') {
+      const date = new Date(value);
+      value = isNaN(date.getTime()) ? value : date.toLocaleDateString('ru-RU');
+    }
+    
+    return value;
   };
 
   const getCellRaw = (row, col) => {
@@ -127,7 +151,8 @@ function Spreadsheet() {
       let sum = 0;
       for (let row = startRow; row <= endRow; row++) {
         for (let col = startCol; col <= endCol; col++) {
-          const val = getCellValue(row, col);
+          const cell = currentData[`${row},${col}`];
+          const val = cell ? (cell.computed !== undefined ? cell.computed : cell.raw) : '';
           const num = parseFloat(val);
           if (!isNaN(num)) sum += num;
         }
@@ -144,7 +169,8 @@ function Spreadsheet() {
       let sum = 0, count = 0;
       for (let row = startRow; row <= endRow; row++) {
         for (let col = startCol; col <= endCol; col++) {
-          const val = getCellValue(row, col);
+          const cell = currentData[`${row},${col}`];
+          const val = cell ? (cell.computed !== undefined ? cell.computed : cell.raw) : '';
           const num = parseFloat(val);
           if (!isNaN(num)) { sum += num; count++; }
         }
@@ -158,7 +184,8 @@ function Spreadsheet() {
       cellRefs.forEach(ref => {
         const col = ref.charCodeAt(0) - 65;
         const row = parseInt(ref.substring(1)) - 1;
-        const value = getCellValue(row, col);
+        const cell = currentData[`${row},${col}`];
+        const value = cell ? (cell.computed !== undefined ? cell.computed : cell.raw) : '';
         evalExpr = evalExpr.replace(ref, value);
       });
     }
@@ -169,7 +196,7 @@ function Spreadsheet() {
     } catch (e) {
       return '#ОШИБКА!';
     }
-  }, [getCellValue]);
+  }, []);
 
   const handleUpdateCell = useCallback((row, col, rawValue) => {
     let computedValue = rawValue;
@@ -188,6 +215,7 @@ function Spreadsheet() {
     setTimeout(() => {
       const state = window.store?.getState();
       const currentData = state?.spreadsheet?.data || newData;
+      const currentStyles = state?.spreadsheet?.styles || styles;
       
       Object.keys(currentData).forEach(key => {
         const cell = currentData[key];
@@ -201,10 +229,12 @@ function Spreadsheet() {
           } catch (e) {}
         }
       });
+      
+      const finalData = window.store?.getState()?.spreadsheet?.data || newData;
+      const finalStyles = window.store?.getState()?.spreadsheet?.styles || currentStyles;
+      saveDocument(finalData, finalStyles);
     }, 0);
-    
-    saveDocument(newData);
-  }, [dispatch, data, evaluateFormula, saveDocument]);
+  }, [dispatch, data, styles, evaluateFormula, saveDocument]);
 
   const startEdit = (row, col) => {
     setEditingCell({ row, col });
@@ -221,25 +251,41 @@ function Spreadsheet() {
 
   const addRowAbove = (currentRow) => {
     const newData = {};
+    const newStyles = {};
+    
     Object.keys(data).forEach(key => {
       const [row, col] = key.split(',').map(Number);
-      if (row < currentRow) newData[key] = data[key];
-      else newData[`${row + 1},${col}`] = data[key];
+      if (row < currentRow) {
+        newData[key] = data[key];
+        if (styles[key]) newStyles[key] = styles[key];
+      } else {
+        newData[`${row + 1},${col}`] = data[key];
+        if (styles[key]) newStyles[`${row + 1},${col}`] = styles[key];
+      }
     });
+    
     dispatch(setData(newData));
-    saveDocument(newData);
+    saveDocument(newData, newStyles);
     dispatch(showNotification({ message: 'Строка добавлена', type: 'success' }));
   };
 
   const deleteRow = (row) => {
     const newData = {};
+    const newStyles = {};
+    
     Object.keys(data).forEach(key => {
       const [r, col] = key.split(',').map(Number);
-      if (r < row) newData[key] = data[key];
-      else if (r > row) newData[`${r - 1},${col}`] = data[key];
+      if (r < row) {
+        newData[key] = data[key];
+        if (styles[key]) newStyles[key] = styles[key];
+      } else if (r > row) {
+        newData[`${r - 1},${col}`] = data[key];
+        if (styles[key]) newStyles[`${r - 1},${col}`] = styles[key];
+      }
     });
+    
     dispatch(setData(newData));
-    saveDocument(newData);
+    saveDocument(newData, newStyles);
     if (selectedCell?.row === row) dispatch(setSelectedCell(null));
     else if (selectedCell?.row > row) dispatch(setSelectedCell({ row: selectedCell.row - 1, col: selectedCell.col }));
     dispatch(showNotification({ message: 'Строка удалена', type: 'success' }));
@@ -247,13 +293,21 @@ function Spreadsheet() {
 
   const addColumnLeft = (currentCol) => {
     const newData = {};
+    const newStyles = {};
+    
     Object.keys(data).forEach(key => {
       const [row, col] = key.split(',').map(Number);
-      if (col < currentCol) newData[key] = data[key];
-      else newData[`${row},${col + 1}`] = data[key];
+      if (col < currentCol) {
+        newData[key] = data[key];
+        if (styles[key]) newStyles[key] = styles[key];
+      } else {
+        newData[`${row},${col + 1}`] = data[key];
+        if (styles[key]) newStyles[`${row},${col + 1}`] = styles[key];
+      }
     });
+    
     dispatch(setData(newData));
-    saveDocument(newData);
+    saveDocument(newData, newStyles);
     if (selectedCell && selectedCell.col >= currentCol) {
       dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col + 1 }));
     }
@@ -262,13 +316,21 @@ function Spreadsheet() {
 
   const deleteColumn = (col) => {
     const newData = {};
+    const newStyles = {};
+    
     Object.keys(data).forEach(key => {
       const [row, c] = key.split(',').map(Number);
-      if (c < col) newData[key] = data[key];
-      else if (c > col) newData[`${row},${c - 1}`] = data[key];
+      if (c < col) {
+        newData[key] = data[key];
+        if (styles[key]) newStyles[key] = styles[key];
+      } else if (c > col) {
+        newData[`${row},${c - 1}`] = data[key];
+        if (styles[key]) newStyles[`${row},${c - 1}`] = styles[key];
+      }
     });
+    
     dispatch(setData(newData));
-    saveDocument(newData);
+    saveDocument(newData, newStyles);
     if (selectedCell?.col === col) dispatch(setSelectedCell(null));
     else if (selectedCell?.col > col) dispatch(setSelectedCell({ row: selectedCell.row, col: selectedCell.col - 1 }));
     dispatch(showNotification({ message: 'Столбец удалён', type: 'success' }));
@@ -297,7 +359,7 @@ function Spreadsheet() {
   };
 
   const exportToJSON = () => {
-    const exportData = { name: doc?.name, rows: ROWS, cols: COLS, data: data };
+    const exportData = { name: doc?.name, rows: ROWS, cols: COLS, data: data, styles: styles };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -325,7 +387,7 @@ function Spreadsheet() {
         }
       }
       dispatch(setData(newData));
-      saveDocument(newData);
+      saveDocument(newData, {});
       dispatch(showNotification({ message: 'Импорт CSV выполнен', type: 'success' }));
     };
     reader.readAsText(file, 'UTF-8');
@@ -421,45 +483,187 @@ function Spreadsheet() {
     }
   };
 
+  const handleCopy = useCallback(() => {
+    if (selectionRange) {
+      const { start, end } = selectionRange;
+      const startRow = Math.min(start.row, end.row);
+      const endRow = Math.max(start.row, end.row);
+      const startCol = Math.min(start.col, end.col);
+      const endCol = Math.max(start.col, end.col);
+      dispatch(copySelection({ startRow, endRow, startCol, endCol }));
+      dispatch(showNotification({ message: 'Скопировано', type: 'success' }));
+    } else if (selectedCell) {
+      const { row, col } = selectedCell;
+      dispatch(copySelection({ startRow: row, endRow: row, startCol: col, endCol: col }));
+      dispatch(showNotification({ message: 'Скопировано', type: 'success' }));
+    }
+  }, [selectionRange, selectedCell, dispatch]);
+
+  const handleCut = useCallback(() => {
+    if (selectionRange) {
+      const { start, end } = selectionRange;
+      const startRow = Math.min(start.row, end.row);
+      const endRow = Math.max(start.row, end.row);
+      const startCol = Math.min(start.col, end.col);
+      const endCol = Math.max(start.col, end.col);
+      dispatch(cutSelection({ startRow, endRow, startCol, endCol }));
+      dispatch(showNotification({ message: 'Вырезано', type: 'success' }));
+    } else if (selectedCell) {
+      const { row, col } = selectedCell;
+      dispatch(cutSelection({ startRow: row, endRow: row, startCol: col, endCol: col }));
+      dispatch(showNotification({ message: 'Вырезано', type: 'success' }));
+    }
+  }, [selectionRange, selectedCell, dispatch]);
+
+  const handlePaste = useCallback(() => {
+    if (selectedCell) {
+      dispatch(pasteSelection({ targetRow: selectedCell.row, targetCol: selectedCell.col }));
+      dispatch(showNotification({ message: 'Вставлено', type: 'success' }));
+    }
+  }, [selectedCell, dispatch]);
+
+  const handleSelectAll = useCallback(() => {
+    dispatch(setSelectionRange({
+      start: { row: 0, col: 0 },
+      end: { row: ROWS - 1, col: COLS - 1 }
+    }));
+    dispatch(showNotification({ message: 'Выделено всё', type: 'info' }));
+  }, [dispatch, ROWS, COLS]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         dispatch(undo());
         setTimeout(() => {
           const state = window.store?.getState();
           if (state && doc) {
-            saveDocument(state.spreadsheet.data);
+            saveDocument(state.spreadsheet.data, state.spreadsheet.styles);
           }
         }, 100);
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      } 
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
         dispatch(redo());
         setTimeout(() => {
           const state = window.store?.getState();
           if (state && doc) {
-            saveDocument(state.spreadsheet.data);
+            saveDocument(state.spreadsheet.data, state.spreadsheet.styles);
           }
         }, 100);
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         const state = window.store?.getState();
         if (state && doc) {
-          dispatch(saveDocumentData({ id: doc.id, data: state.spreadsheet.data }));
+          dispatch(saveDocumentData({ id: doc.id, data: state.spreadsheet.data, styles: state.spreadsheet.styles }));
           dispatch(setSaveStatus('saved'));
           dispatch(showNotification({ message: 'Документ сохранён', type: 'success' }));
         }
-      } else if (editingCell) {
-        if (e.key === 'Enter') finishEdit();
-        else if (e.key === 'Escape') setEditingCell(null);
-      } else if (selectedCell) {
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        handleCopy();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+        e.preventDefault();
+        handleCut();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        handlePaste();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        handleSelectAll();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        if (selectedCell) {
+          const key = `${selectedCell.row},${selectedCell.col}`;
+          const currentStyle = styles[key] || {};
+          dispatch(updateCellStyle({
+            row: selectedCell.row,
+            col: selectedCell.col,
+            styleKey: 'bold',
+            styleValue: currentStyle.bold === true ? null : true
+          }));
+        }
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault();
+        if (selectedCell) {
+          const key = `${selectedCell.row},${selectedCell.col}`;
+          const currentStyle = styles[key] || {};
+          dispatch(updateCellStyle({
+            row: selectedCell.row,
+            col: selectedCell.col,
+            styleKey: 'italic',
+            styleValue: currentStyle.italic === true ? null : true
+          }));
+        }
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+        e.preventDefault();
+        if (selectedCell) {
+          const key = `${selectedCell.row},${selectedCell.col}`;
+          const currentStyle = styles[key] || {};
+          dispatch(updateCellStyle({
+            row: selectedCell.row,
+            col: selectedCell.col,
+            styleKey: 'underline',
+            styleValue: currentStyle.underline === true ? null : true
+          }));
+        }
+      }
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedCell && !editingCell) {
+          e.preventDefault();
+          handleUpdateCell(selectedCell.row, selectedCell.col, '');
+        }
+      }
+      else if (e.key === 'Tab' && !editingCell) {
+        e.preventDefault();
+        if (selectedCell) {
+          const { row, col } = selectedCell;
+          if (col < COLS - 1) {
+            dispatch(setSelectedCell({ row, col: col + 1 }));
+          } else if (row < ROWS - 1) {
+            dispatch(setSelectedCell({ row: row + 1, col: 0 }));
+          }
+        }
+      }
+      else if (e.key === 'Enter') {
+        if (editingCell) {
+          finishEdit();
+        } else if (selectedCell) {
+          const { row, col } = selectedCell;
+          if (row < ROWS - 1) {
+            dispatch(setSelectedCell({ row: row + 1, col }));
+          }
+          startEdit(row, col);
+        }
+      }
+      else if (e.key === 'Escape') {
+        if (editingCell) {
+          setEditingCell(null);
+        }
+      }
+      else if (!editingCell && selectedCell) {
         const { row, col } = selectedCell;
-        if (e.key === 'Enter') startEdit(row, col);
-        else if (e.key === 'Delete') handleUpdateCell(row, col, '');
-        else if (e.key === 'ArrowUp' && row > 0) dispatch(setSelectedCell({ row: row - 1, col }));
-        else if (e.key === 'ArrowDown' && row < ROWS - 1) dispatch(setSelectedCell({ row: row + 1, col }));
-        else if (e.key === 'ArrowLeft' && col > 0) dispatch(setSelectedCell({ row, col: col - 1 }));
-        else if (e.key === 'ArrowRight' && col < COLS - 1) dispatch(setSelectedCell({ row, col: col + 1 }));
+        if (e.key === 'ArrowUp' && row > 0) {
+          e.preventDefault();
+          dispatch(setSelectedCell({ row: row - 1, col }));
+        } else if (e.key === 'ArrowDown' && row < ROWS - 1) {
+          e.preventDefault();
+          dispatch(setSelectedCell({ row: row + 1, col }));
+        } else if (e.key === 'ArrowLeft' && col > 0) {
+          e.preventDefault();
+          dispatch(setSelectedCell({ row, col: col - 1 }));
+        } else if (e.key === 'ArrowRight' && col < COLS - 1) {
+          e.preventDefault();
+          dispatch(setSelectedCell({ row, col: col + 1 }));
+        }
       }
     };
     
@@ -468,7 +672,7 @@ function Spreadsheet() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [editingCell, selectedCell, data, doc, dispatch, ROWS, COLS, handleUpdateCell, saveDocument]);
+  }, [editingCell, selectedCell, data, styles, doc, dispatch, ROWS, COLS, handleUpdateCell, saveDocument, handleCopy, handleCut, handlePaste, handleSelectAll]);
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT));
   const endIndex = Math.min(startIndex + VISIBLE_ROWS, ROWS);
@@ -482,6 +686,7 @@ function Spreadsheet() {
   return (
     <div className="spreadsheet">
       <Breadcrumbs />
+      <FormatToolbar />
       <div className="formula-bar">
         <div className="formula-label"><span className="fx">fx</span></div>
         <input 
@@ -495,6 +700,7 @@ function Spreadsheet() {
           onKeyDown={(e) => { 
             if (e.key === 'Enter' && selectedCell) {
               handleUpdateCell(selectedCell.row, selectedCell.col, formulaValue);
+              setFormulaValue('');
             }
           }} 
           onBlur={() => { 
@@ -548,28 +754,39 @@ function Spreadsheet() {
                       {row + 1}
                       <div className="row-resize" onMouseDown={(e) => startRowResize(row, e)} />
                     </div>
-                    {Array.from({ length: COLS }).map((_, col) => (
-                      <div 
-                        key={col} 
-                        className={`cell ${selectedCell?.row === row && selectedCell?.col === col ? 'selected' : ''} ${isCellInRange(row, col) && !(selectedCell?.row === row && selectedCell?.col === col) ? 'in-range' : ''}`}
-                        style={{ width: columnWidths[col] || 100, height: currentRowHeight }}
-                        onClick={(e) => handleCellClick(row, col, e)}
-                        onDoubleClick={() => startEdit(row, col)}
-                        onContextMenu={(e) => handleContextMenu(e, row, col)}>
-                        {editingCell?.row === row && editingCell?.col === col ? (
-                          <input 
-                            type="text" 
-                            value={editValue} 
-                            onChange={(e) => setEditValue(e.target.value)} 
-                            onBlur={finishEdit}
-                            onKeyDown={(e) => e.key === 'Enter' && finishEdit()}
-                            autoFocus 
-                          />
-                        ) : (
-                          <div className="cell-content">{getCellValue(row, col)}</div>
-                        )}
-                      </div>
-                    ))}
+                    {Array.from({ length: COLS }).map((_, col) => {
+                      const cellStyle = styles[`${row},${col}`] || {};
+                      const cellInlineStyle = {
+                      fontWeight: cellStyle.bold ? 'bold' : 'normal',
+                      fontStyle: cellStyle.italic ? 'italic' : 'normal',
+                      textDecoration: cellStyle.underline ? 'underline' : 'none',
+                      color: cellStyle.textColor || '#000000',
+                      backgroundColor: cellStyle.backgroundColor || 'transparent'
+                    };
+                      
+                      return (
+                        <div 
+                          key={col} 
+                          className={`cell ${selectedCell?.row === row && selectedCell?.col === col ? 'selected' : ''} ${isCellInRange(row, col) && !(selectedCell?.row === row && selectedCell?.col === col) ? 'in-range' : ''}`}
+                          style={{ width: columnWidths[col] || 100, height: currentRowHeight, ...cellInlineStyle }}
+                          onClick={(e) => handleCellClick(row, col, e)}
+                          onDoubleClick={() => startEdit(row, col)}
+                          onContextMenu={(e) => handleContextMenu(e, row, col)}>
+                          {editingCell?.row === row && editingCell?.col === col ? (
+                            <input 
+                              type="text" 
+                              value={editValue} 
+                              onChange={(e) => setEditValue(e.target.value)} 
+                              onBlur={finishEdit}
+                              onKeyDown={(e) => e.key === 'Enter' && finishEdit()}
+                              autoFocus 
+                            />
+                          ) : (
+                            <div className="cell-content">{getCellValue(row, col)}</div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}

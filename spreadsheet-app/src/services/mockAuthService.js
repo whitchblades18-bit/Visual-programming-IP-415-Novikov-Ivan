@@ -1,29 +1,21 @@
 let users = [
   {
     id: '1',
-    name: 'snufkin',
-    email: 'hardstyle@bootleg.com',
-    password: 'hardstyle',
-    documents: []
+    name: 'Demo User',
+    email: 'demo@example.com',
+    password: 'demo12345',
+    createdAt: new Date().toISOString()
   }
 ];
 
 let currentUser = null;
 let currentAccessToken = null;
 
-const getUserDocuments = (userId) => {
+const getUserDocumentsFromStorage = (userId) => {
   const allDocs = localStorage.getItem('spreadsheet_docs');
   if (!allDocs) return [];
   const docs = JSON.parse(allDocs);
   return docs.filter(doc => doc.userId === userId);
-};
-
-const saveUserDocuments = (userId, documents) => {
-  const allDocs = localStorage.getItem('spreadsheet_docs');
-  let allDocsArray = allDocs ? JSON.parse(allDocs) : [];
-  allDocsArray = allDocsArray.filter(doc => doc.userId !== userId);
-  allDocsArray.push(...documents.map(doc => ({ ...doc, userId })));
-  localStorage.setItem('spreadsheet_docs', JSON.stringify(allDocsArray));
 };
 
 export const mockAuthAPI = {
@@ -43,7 +35,7 @@ export const mockAuthAPI = {
           name,
           email,
           password,
-          documents: []
+          createdAt: new Date().toISOString()
         };
         
         users.push(newUser);
@@ -53,7 +45,7 @@ export const mockAuthAPI = {
         
         localStorage.setItem('refreshToken', refreshToken);
         
-        currentUser = { id: newUser.id, name: newUser.name, email: newUser.email };
+        currentUser = { id: newUser.id, name: newUser.name, email: newUser.email, createdAt: newUser.createdAt };
         currentAccessToken = accessToken;
         
         resolve({
@@ -80,7 +72,7 @@ export const mockAuthAPI = {
         
         localStorage.setItem('refreshToken', refreshToken);
         
-        currentUser = { id: user.id, name: user.name, email: user.email };
+        currentUser = { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
         currentAccessToken = accessToken;
         
         resolve({
@@ -103,7 +95,7 @@ export const mockAuthAPI = {
             const userId = refreshToken.split('_')[3];
             const user = users.find(u => u.id === userId);
             if (user) {
-              currentUser = { id: user.id, name: user.name, email: user.email };
+              currentUser = { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
               currentAccessToken = `mock_access_token_${userId}_${Date.now()}`;
               resolve({ user: currentUser });
             } else {
@@ -136,7 +128,7 @@ export const mockAuthAPI = {
         
         const newAccessToken = `mock_access_token_${userId}_${Date.now()}`;
         currentAccessToken = newAccessToken;
-        currentUser = { id: user.id, name: user.name, email: user.email };
+        currentUser = { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
         
         resolve({ accessToken: newAccessToken });
       }, 200);
@@ -161,10 +153,8 @@ export const mockAuthAPI = {
           resolve([]);
           return;
         }
-        const allDocs = localStorage.getItem('spreadsheet_docs');
-        const docs = allDocs ? JSON.parse(allDocs) : [];
-        const userDocs = docs.filter(doc => doc.userId === currentUser.id);
-        resolve(userDocs);
+        const docs = getUserDocumentsFromStorage(currentUser.id);
+        resolve(docs);
       }, 100);
     });
   },
@@ -177,17 +167,11 @@ export const mockAuthAPI = {
           return;
         }
         
-        const allDocs = localStorage.getItem('spreadsheet_docs');
-        const docs = allDocs ? JSON.parse(allDocs) : [];
+        const docs = getUserDocumentsFromStorage(currentUser.id);
         const doc = docs.find(d => d.id === documentId);
         
         if (!doc) {
           reject({ status: 404 });
-          return;
-        }
-        
-        if (doc.userId !== currentUser.id) {
-          reject({ status: 403 });
           return;
         }
         
@@ -246,48 +230,97 @@ export const mockAuthAPI = {
       }, 100);
     });
   },
-    deleteDocument: async (documentId) => {
-    return new Promise(async (resolve, reject) => {
+  
+  deleteDocument: async (documentId) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(async () => {
         try {
-        await mockAuthAPI.checkDocumentAccess(documentId);
-        
-        const allDocs = localStorage.getItem('spreadsheet_docs');
-        const docs = allDocs ? JSON.parse(allDocs) : [];
-        const filtered = docs.filter(d => d.id !== documentId);
-        localStorage.setItem('spreadsheet_docs', JSON.stringify(filtered));
-        resolve();
+          await mockAuthAPI.checkDocumentAccess(documentId);
+          
+          const allDocs = localStorage.getItem('spreadsheet_docs');
+          const docs = allDocs ? JSON.parse(allDocs) : [];
+          const filtered = docs.filter(d => d.id !== documentId);
+          localStorage.setItem('spreadsheet_docs', JSON.stringify(filtered));
+          resolve();
         } catch (error) {
-        reject(error);
+          reject(error);
         }
+      }, 100);
     });
-    },
-
-    duplicateDocument: async (documentId) => {
-    return new Promise(async (resolve, reject) => {
+  },
+  
+  duplicateDocument: async (documentId) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(async () => {
         try {
-        const doc = await mockAuthAPI.checkDocumentAccess(documentId);
-        
-        const newDoc = {
+          const doc = await mockAuthAPI.checkDocumentAccess(documentId);
+          
+          const newDoc = {
             ...doc,
             id: Date.now().toString(),
             name: `${doc.name} (копия)`,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             data: JSON.parse(JSON.stringify(doc.data || {}))
-        };
-        
-        const allDocs = localStorage.getItem('spreadsheet_docs');
-        const docs = allDocs ? JSON.parse(allDocs) : [];
-        docs.push(newDoc);
-        localStorage.setItem('spreadsheet_docs', JSON.stringify(docs));
-        resolve(newDoc);
+          };
+          
+          const allDocs = localStorage.getItem('spreadsheet_docs');
+          const docs = allDocs ? JSON.parse(allDocs) : [];
+          docs.push(newDoc);
+          localStorage.setItem('spreadsheet_docs', JSON.stringify(docs));
+          resolve(newDoc);
         } catch (error) {
-        reject(error);
+          reject(error);
         }
+      }, 100);
     });
-    }
+  },
+  
+  updateProfile: async (updates) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (!currentUser) {
+          reject({ message: 'Не авторизован' });
+          return;
+        }
+        
+        const userIndex = users.findIndex(u => u.id === currentUser.id);
+        if (userIndex !== -1) {
+          users[userIndex] = { ...users[userIndex], ...updates };
+          currentUser = { ...currentUser, ...updates };
+          resolve(currentUser);
+        } else {
+          reject({ message: 'Пользователь не найден' });
+        }
+      }, 200);
+    });
+  },
+  
+  changePassword: async (passwordData) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (!currentUser) {
+          reject({ message: 'Не авторизован' });
+          return;
+        }
+        
+        const user = users.find(u => u.id === currentUser.id);
+        if (!user) {
+          reject({ message: 'Пользователь не найден' });
+          return;
+        }
+        
+        if (user.password !== passwordData.currentPassword) {
+          reject({ message: 'Неверный текущий пароль' });
+          return;
+        }
+        
+        user.password = passwordData.newPassword;
+        resolve({ success: true });
+      }, 300);
+    });
+  }
 };
 
 export const getAccessToken = () => currentAccessToken;
-
 export const isAuthenticated = () => !!currentAccessToken;

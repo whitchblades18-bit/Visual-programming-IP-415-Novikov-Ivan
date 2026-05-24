@@ -97,7 +97,6 @@
   flex-shrink: 0;
 }
 
-/* Хватайка для столбца - справа */
 .col-resize {
   position: absolute;
   right: -3px;
@@ -137,7 +136,6 @@
   flex-shrink: 0;
 }
 
-/* Хватайка для строки - снизу */
 .row-resize {
   position: absolute;
   bottom: -3px;
@@ -237,7 +235,6 @@
   background: #a8a8a8;
 }
 
-/* Стили для дашборда */
 .loading {
   display: flex;
   justify-content: center;
@@ -247,7 +244,6 @@
   color: #666;
 }
 
-/* Стили для индикатора сохранения */
 .save-indicator {
   font-size: 12px;
   padding: 4px 8px;
@@ -266,7 +262,6 @@
   color: #e74c3c;
 }
 
-/* Стили для меню экспорта */
 .toolbar-buttons {
   display: flex;
   gap: 10px;
@@ -364,4 +359,88 @@
 
 .formula-bar {
   position: relative;
+}
+
+@media (min-width: 1024px) {
+  .app-layout {
+    max-width: 100%;
+  }
+  
+  .sidebar {
+    width: 250px;
+  }
+  
+  .main-content {
+    overflow: auto;
+  }
+  
+  .grid-container {
+    overflow: auto;
+  }
+  
+  .format-toolbar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 1023px) and (min-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  .format-toolbar {
+    gap: 4px;
+  }
+  
+  .toolbar-icon {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-layout {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #bdc3c7;
+    padding: 0.5rem 0;
+  }
+  
+  .sidebar nav {
+    flex-direction: row;
+    justify-content: center;
+  }
+  
+  .nav-link {
+    padding: 0.5rem 1rem;
+  }
+  
+  .format-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+}
+
+.save-indicator {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.save-indicator.saved {
+  color: #27ae60;
+}
+
+.save-indicator.saving {
+  color: #f39c12;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
